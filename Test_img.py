@@ -49,12 +49,15 @@ models.default_device = args.device
 
 print(models.default_device)
 
-if args.model == 'stackhourglass':
-    model = stackhourglass(args.maxdisp)
-elif args.model == 'basic':
-    model = basic(args.maxdisp)
-else:
-    print('no model')
+model = stackhourglass(args.maxdisp)
+
+# TODO: Add support for basic model (requires new training)
+# if args.model == 'stackhourglass':
+#     model = stackhourglass(args.maxdisp)
+# elif args.model == 'basic':
+#     model = basic(args.maxdisp)
+# else:
+#     print('no model')
 
 if not args.no_cuda and torch.cuda.is_available():
     model = nn.DataParallel(model, device_ids=[0])

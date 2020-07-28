@@ -8,26 +8,28 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 import numpy as np
 import time
+from collections import OrderedDict
 import math
 from models import *
+import models
 import cv2
 from PIL import Image
 
 # 2012 data /media/jiaren/ImageNet/data_scene_flow_2012/testing/
 
 parser = argparse.ArgumentParser(description='PSMNet')
-parser.add_argument('--KITTI', default='2015',
-                    help='KITTI version')
-parser.add_argument('--datapath', default='/media/jiaren/ImageNet/data_scene_flow_2015/testing/',
-                    help='select model')
+# parser.add_argument('--KITTI', default='2015',
+#                     help='KITTI version')
+# parser.add_argument('--datapath', default='/media/jiaren/ImageNet/data_scene_flow_2015/testing/',
+#                     help='select model')
 parser.add_argument('--loadmodel', default='./trained/pretrained_model_KITTI2015.tar',
                     help='loading model')
 parser.add_argument('--leftimg', default= './VO04_L.png',
                     help='load model')
 parser.add_argument('--rightimg', default= './VO04_R.png',
                     help='load model')                                      
-parser.add_argument('--model', default='stackhourglass',
-                    help='select model')
+# parser.add_argument('--model', default='stackhourglass',
+#                     help='select model')
 parser.add_argument('--maxdisp', type=int, default=192,
                     help='maxium disparity')
 parser.add_argument('--no-cuda', action='store_true', default=False,
@@ -35,11 +37,17 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 parser.add_argument('--seed', type=int, default=1, metavar='S',
                     help='random seed (default: 1)')
 args = parser.parse_args()
-args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-torch.manual_seed(args.seed)
-if args.cuda:
+if not args.no_cuda and torch.cuda.is_available():
+    args.device = torch.device(0)
     torch.cuda.manual_seed(args.seed)
+else:
+    args.device = torch.device('cpu')
+    torch.manual_seed(args.seed)
+
+models.default_device = args.device
+
+print(models.default_device)
 
 if args.model == 'stackhourglass':
     model = stackhourglass(args.maxdisp)
@@ -48,25 +56,40 @@ elif args.model == 'basic':
 else:
     print('no model')
 
-model = nn.DataParallel(model, device_ids=[0])
-model.cuda()
+if not args.no_cuda and torch.cuda.is_available():
+    model = nn.DataParallel(model, device_ids=[0])
+
+model.to(models.default_device)
+
 
 if args.loadmodel is not None:
     print('load PSMNet')
-    state_dict = torch.load(args.loadmodel)
-    model.load_state_dict(state_dict['state_dict'])
+    state_dict = torch.load(args.loadmodel, map_location=args.device)
+
+    if not args.no_cuda and torch.cuda.is_available():
+        model.load_state_dict(state_dict['state_dict'])
+    else:
+        # Clean state dict to work without DataParallel
+        # https://discuss.pytorch.org/t/missing-keys-unexpected-keys-in-state-dict-when-loading-self-trained-model/22379/2
+        cleaned_state_dict = OrderedDict()
+
+        for key in state_dict['state_dict']:
+            new_key = str(key).replace("module.", "")
+            cleaned_state_dict[new_key] = state_dict['state_dict'][key]
+
+        model.load_state_dict(cleaned_state_dict)
 
 print('Number of model parameters: {}'.format(sum([p.data.nelement() for p in model.parameters()])))
+
 
 def test(imgL,imgR):
         model.eval()
 
-        if args.cuda:
-           imgL = imgL.cuda()
-           imgR = imgR.cuda()     
+        imgL.to(models.default_device)
+        imgR.to(models.default_device)
 
         with torch.no_grad():
-            disp = model(imgL,imgR)
+            disp = model(imgL, imgR)
 
         disp = torch.squeeze(disp)
         pred_disp = disp.data.cpu().numpy()
@@ -118,8 +141,9 @@ def main():
         img = Image.fromarray(img)
         img.save('Test_disparity.png')
 
+
 if __name__ == '__main__':
-   main()
+    main()
 
 
 

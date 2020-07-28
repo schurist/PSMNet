@@ -2,6 +2,7 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.utils.data
+import models
 from torch.autograd import Variable
 import torch.nn.functional as F
 import math
@@ -53,10 +54,11 @@ class matchshifted(nn.Module):
         out = torch.cat((shifted_left,shifted_right),1).view(batch,filters*2,1,height,width)
         return out
 
+
 class disparityregression(nn.Module):
     def __init__(self, maxdisp):
         super(disparityregression, self).__init__()
-        self.disp = Variable(torch.Tensor(np.reshape(np.array(range(maxdisp)),[1,maxdisp,1,1])).cuda(), requires_grad=False)
+        self.disp = torch.Tensor(np.reshape(np.array(range(maxdisp)), [1,maxdisp,1,1])).to(models.default_device)
 
     def forward(self, x):
         disp = self.disp.repeat(x.size()[0],1,x.size()[2],x.size()[3])
